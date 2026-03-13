@@ -1,163 +1,137 @@
 /**
- * Content script for Ivanti Neurons MDM device pages.
+ * Content script for MobileIron / Ivanti Neurons MDM device pages.
  *
- * Extracts device attributes from the currently selected device view.
+ * Target URL pattern: na3.mobileiron.com/index.html#!/devices/detail/...
  *
- * Extraction strategy:
- *   1. Look for definition lists or labeled value blocks containing known labels.
- *   2. Fall back to table rows or card-style layouts.
- *   3. Use MutationObserver to handle SPA navigation/rendering delays.
+ * The page is an AngularJS SPA with hash-based routing.
+ * Content is rendered asynchronously after the shell loads, so
+ * extraction must wait for real data to appear in the DOM.
+ *
+ * Known page structure (from live screenshot):
+ *   - Header/summary bar: "iPhone 12 | Phone #: +1... | Space: ... | Status: Active | ..."
+ *   - Table under "General" tab with label→value rows:
+ *       Serial Number    H4YJ82YB0F00
+ *       Model Number     MGHN3VC/A
+ *       Manufacturer     Apple
+ *       Device Location  Disabled in RTX - BYOD Privacy
+ *   - iOS/OS version may appear further down the page or on a different tab.
  */
 
 import { DeviceDetailsSchema, type DeviceDetails } from "../../shared/schemas";
 import type { ExtensionMessage } from "../../shared/messages";
-import { findFieldByLabel, readDefinitionListValue } from "../helpers";
 
-// ── Selectors & label mappings (centralized) ────────────────────────
+// ── Page text helper ────────────────────────────────────────────────
 
-const LABELS = {
-  ownershipType: [
-    "ownership",
-    "ownership type",
-    "corp/byod",
-    "corporate/byod",
-    "device ownership",
-    "managed by",
-  ],
-  deviceModel: [
-    "model",
-    "device model",
-    "model name",
-    "model number",
-    "product name",
-    "device name",
-  ],
-  serialNumber: [
-    "serial number",
-    "serial",
-    "serial no",
-    "serial #",
-    "device serial",
-  ],
-  mdn: [
-    "mdn",
-    "phone number",
-    "mobile number",
-    "cellular number",
-    "tel",
-    "telephone",
-    "line number",
-  ],
-  iosVersion: [
-    "os version",
-    "ios version",
-    "operating system version",
-    "software version",
-    "os",
-    "system version",
-  ],
-};
+function getPageText(): string {
+  return document.body?.innerText ?? "";
+}
 
-const SUMMARY_PATTERNS = {
-  phoneNumber: /Phone\s*#\s*([+()\-\d\s]{7,})/i,
-  iosVersion:
-    /(?:iOS\s*Version|OS\s*Version|Software\s*Version|System\s*Version)\s*[:#]?\s*([0-9]+(?:\.[0-9A-Za-z]+)+)/i,
-  deviceModel: /\b(iPhone\s+[^|\n]+|iPad\s+[^|\n]+)\b/i,
-};
+// ── Table extraction (primary strategy for MobileIron) ──────────────
+// MobileIron renders device details in <table> rows where the first
+// cell is the label and the second cell is the value.
 
-// ── Extraction logic ────────────────────────────────────────────────
-
-function tryExtract(labels: string[]): string | null {
-  for (const label of labels) {
-    // Strategy 1: definition lists
-    const dlVal = readDefinitionListValue(document, label);
-    if (dlVal) return dlVal;
-
-    // Strategy 2: generic label→value traversal
-    const fieldVal = findFieldByLabel(document, label);
-    if (fieldVal) return fieldVal;
-
-    // Strategy 3: table rows where first cell is the label
-    const rows = document.querySelectorAll("tr");
-    for (const row of rows) {
-      const cells = row.querySelectorAll("td, th");
-      if (cells.length >= 2) {
-        if (cells[0].textContent?.trim().toLowerCase() === label.toLowerCase()) {
-          const val = cells[1].textContent?.trim();
-          if (val) return val;
-        }
+function findTableValue(...labelVariants: string[]): string | null {
+  const rows = document.querySelectorAll("tr");
+  for (const row of rows) {
+    const cells = row.querySelectorAll("td, th");
+    if (cells.length < 2) continue;
+    const cellText = cells[0].textContent?.trim().toLowerCase() ?? "";
+    for (const label of labelVariants) {
+      if (cellText === label.toLowerCase()) {
+        const val = cells[1].textContent?.trim();
+        if (val && val.toLowerCase() !== "n/a") return val;
       }
     }
-
-    // Strategy 4: aria-label or data-attribute on value elements
-    const byAria = document.querySelector(`[aria-label="${label}" i]`);
-    if (byAria?.textContent?.trim()) return byAria.textContent.trim();
   }
   return null;
 }
 
-function getPageText(limit = 4000): string {
-  return document.body?.innerText?.replace(/\s+/g, " ").trim().slice(0, limit) ?? "";
+// ── Summary / header bar extraction ─────────────────────────────────
+// MobileIron shows a pipe-delimited summary line near the top:
+// "iPhone 12 | Phone #: +12892188428 | Space: Default Space | ..."
+
+function matchPageText(regex: RegExp): string | null {
+  const text = getPageText();
+  const match = text.match(regex);
+  return match?.[1]?.trim() || null;
 }
 
-function extractFromSummary(regex: RegExp): string | null {
-  const pageText = getPageText();
-  const match = pageText.match(regex);
-  return match?.[1]?.trim() || match?.[0]?.trim() || null;
+// ── Per-field extractors tailored to MobileIron layout ──────────────
+
+function extractSerialNumber(): string | null {
+  return findTableValue("serial number", "serial", "serial no", "serial #", "device serial");
+}
+
+function extractModelNumber(): string | null {
+  return findTableValue("model number", "model", "model name", "device model", "product name");
 }
 
 function extractDeviceModel(): string | null {
-  const byLabel = tryExtract(LABELS.deviceModel);
-  if (byLabel && !/^M[A-Z0-9]+/i.test(byLabel)) {
-    return byLabel;
-  }
+  // Prefer the friendly name like "iPhone 12" from the summary bar
+  const fromSummary = matchPageText(/\b(iPhone\s+[\w\s]+?)(?:\s*\||$)/i)
+    ?? matchPageText(/\b(iPad\s+[\w\s]+?)(?:\s*\||$)/i);
+  if (fromSummary) return fromSummary.trim();
 
-  const fromSummary = extractFromSummary(SUMMARY_PATTERNS.deviceModel);
-  if (fromSummary) {
-    return fromSummary.replace(/\s*\|\s*$/, "").trim();
-  }
-
-  return byLabel;
+  // Fall back to the table "Model Number" which may be a code like MGHN3VC/A
+  return extractModelNumber();
 }
 
 function extractMdn(): string | null {
-  const byLabel = tryExtract(LABELS.mdn);
-  if (byLabel) return byLabel;
+  // MobileIron shows "Phone #: +12892188428" in the summary bar
+  const fromSummary = matchPageText(/Phone\s*#\s*:?\s*([+()\-\d\s]{7,})/i);
+  if (fromSummary) return fromSummary.replace(/\s+/g, "").trim();
 
-  const fromSummary = extractFromSummary(SUMMARY_PATTERNS.phoneNumber);
-  return fromSummary ? fromSummary.replace(/\s+/g, " ").trim() : null;
+  // Also try table labels
+  return findTableValue("mdn", "phone number", "phone #", "mobile number",
+    "cellular number", "telephone", "line number");
 }
 
 function extractIosVersion(): string | null {
-  const byLabel = tryExtract(LABELS.iosVersion);
-  if (byLabel) return byLabel;
+  // Try table labels first
+  const fromTable = findTableValue("os version", "ios version",
+    "operating system version", "software version", "system version", "os");
+  if (fromTable) return fromTable;
 
-  const fromSummary = extractFromSummary(SUMMARY_PATTERNS.iosVersion);
-  return fromSummary;
+  // Try matching version-like text from the page
+  const fromText = matchPageText(
+    /(?:iOS|OS)\s*(?:Version)?\s*:?\s*(\d+(?:\.\d+)+)/i
+  );
+  return fromText;
 }
 
 function extractOwnershipType(): string | null {
-  const byLabel = tryExtract(LABELS.ownershipType);
-  if (byLabel) return normalizeOwnership(byLabel);
+  // Try direct table labels
+  const fromTable = findTableValue("ownership", "ownership type",
+    "corp/byod", "device ownership", "managed by");
+  if (fromTable) {
+    if (/\bBYOD\b/i.test(fromTable)) return "BYOD";
+    if (/\bCorp\b|\bCorporate\b/i.test(fromTable)) return "Corp";
+    return fromTable;
+  }
 
-  const text = getPageText(8000);
-  if (/\bBYOD\b/i.test(text)) return "BYOD";
-  if (/\bCorp\b|\bCorporate\b|company[- ]owned/i.test(text)) return "Corp";
+  // MobileIron's "Device Location" field often contains BYOD or Corp hints
+  // e.g. "Disabled in RTX - BYOD Privacy"
+  const deviceLocation = findTableValue("device location");
+  if (deviceLocation) {
+    if (/\bBYOD\b/i.test(deviceLocation)) return "BYOD";
+    if (/\bCorp\b|\bCorporate\b/i.test(deviceLocation)) return "Corp";
+  }
+
+  // Last resort: scan full page text
+  const text = getPageText();
+  if (/\bBYOD\b/.test(text)) return "BYOD";
+  if (/\bCorporate\b|company[- ]owned/i.test(text)) return "Corp";
 
   return null;
 }
 
-function normalizeOwnership(value: string): string {
-  if (/\bBYOD\b/i.test(value)) return "BYOD";
-  if (/\bCorp\b|\bCorporate\b|company[- ]owned/i.test(value)) return "Corp";
-  return value.trim();
-}
+// ── Main extraction ─────────────────────────────────────────────────
 
 function extractDeviceDetails(): DeviceDetails {
   return {
     ownershipType: extractOwnershipType(),
     deviceModel: extractDeviceModel(),
-    serialNumber: tryExtract(LABELS.serialNumber),
+    serialNumber: extractSerialNumber(),
     mdn: extractMdn(),
     iosVersion: extractIosVersion(),
   };
@@ -174,6 +148,18 @@ function captureDeviceDetails(): DeviceDetails | null {
 function sendToBackground(data: DeviceDetails): void {
   const msg: ExtensionMessage = { type: "DEVICE_CAPTURED", data };
   chrome.runtime.sendMessage(msg);
+}
+
+// ── Diagnostic string for the button tooltip ────────────────────────
+
+function diagString(data: DeviceDetails): string {
+  const entries = Object.entries(data);
+  const found = entries.filter(([, v]) => v !== null).map(([k, v]) => `${k}: ${v}`);
+  const missing = entries.filter(([, v]) => v === null).map(([k]) => k);
+  let msg = "";
+  if (found.length) msg += "Found: " + found.join(", ");
+  if (missing.length) msg += (msg ? "\n" : "") + "Missing: " + missing.join(", ");
+  return msg;
 }
 
 // ── Inject capture button ───────────────────────────────────────────
@@ -205,49 +191,65 @@ function injectCaptureButton(): void {
     const data = captureDeviceDetails();
     if (data) {
       sendToBackground(data);
-      // Show which fields were found vs missing
       const found = Object.entries(data).filter(([, v]) => v !== null);
       const missing = Object.entries(data).filter(([, v]) => v === null);
 
       if (missing.length === 0) {
-        btn.textContent = "✅ Device Captured";
+        btn.textContent = "✅ Device Captured (5/5)";
         btn.style.backgroundColor = "#107c10";
       } else {
         btn.textContent = `⚠️ Captured (${found.length}/5 fields)`;
         btn.style.backgroundColor = "#ff8c00";
       }
+      btn.title = diagString(data);
       setTimeout(() => {
         btn.textContent = "📱 Capture Device Details";
         btn.style.backgroundColor = "#0078d4";
-      }, 3000);
+        btn.title = "Extract device info for Work Notes template";
+      }, 4000);
     } else {
       btn.textContent = "⚠️ No Device Data Found";
       btn.style.backgroundColor = "#d83b01";
+      btn.title = "The extension could not find any device fields on this page.";
       setTimeout(() => {
         btn.textContent = "📱 Capture Device Details";
         btn.style.backgroundColor = "#0078d4";
-      }, 2000);
+        btn.title = "Extract device info for Work Notes template";
+      }, 3000);
     }
   });
 
   document.body.appendChild(btn);
 }
 
-// ── Init ────────────────────────────────────────────────────────────
+// ── Init with SPA-aware retry ───────────────────────────────────────
+// MobileIron is an AngularJS SPA. The shell HTML loads first, then
+// Angular bootstraps and asynchronously renders the device detail view.
+// We need to wait for `document.body` and keep re-injecting the button
+// after Angular route changes destroy and recreate DOM nodes.
 
 function init(): void {
-  injectCaptureButton();
-
-  // MobileIron/Ivanti is a SPA. Keep the capture button alive across route changes.
-  const observer = new MutationObserver(() => {
-    if (!document.getElementById("snff-ivanti-btn")) {
+  function tryInject(): void {
+    if (document.body) {
       injectCaptureButton();
+      startObserver();
+    } else {
+      // Body not ready yet (very unlikely at document_idle, but safe)
+      setTimeout(tryInject, 200);
     }
-  });
+  }
 
-  if (document.body) {
+  function startObserver(): void {
+    const observer = new MutationObserver(() => {
+      if (!document.getElementById("snff-ivanti-btn")) {
+        injectCaptureButton();
+      }
+    });
     observer.observe(document.body, { childList: true, subtree: true });
   }
+
+  tryInject();
 }
 
+// Run on script load
 init();
