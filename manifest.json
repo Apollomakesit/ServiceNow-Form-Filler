@@ -6,7 +6,8 @@
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://rtxprod.servicenowservices.com/*",
-    "https://*.ivanticloud.com/*"
+    "https://*.ivanticloud.com/*",
+    "https://*.mobileiron.com/*"
   ],
   "background": {
     "service_worker": "src/background/index.ts"
@@ -18,7 +19,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.ivanticloud.com/*"],
+      "matches": ["https://*.ivanticloud.com/*", "https://*.mobileiron.com/*"],
       "js": ["src/content/ivanti/index.ts"],
       "run_at": "document_idle"
     }

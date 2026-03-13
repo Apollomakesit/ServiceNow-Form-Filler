@@ -30,6 +30,7 @@ const LABELS = {
     "model name",
     "model number",
     "product name",
+    "device name",
   ],
   serialNumber: [
     "serial number",
@@ -55,6 +56,13 @@ const LABELS = {
     "os",
     "system version",
   ],
+};
+
+const SUMMARY_PATTERNS = {
+  phoneNumber: /Phone\s*#\s*([+()\-\d\s]{7,})/i,
+  iosVersion:
+    /(?:iOS\s*Version|OS\s*Version|Software\s*Version|System\s*Version)\s*[:#]?\s*([0-9]+(?:\.[0-9A-Za-z]+)+)/i,
+  deviceModel: /\b(iPhone\s+[^|\n]+|iPad\s+[^|\n]+)\b/i,
 };
 
 // ── Extraction logic ────────────────────────────────────────────────
@@ -88,13 +96,70 @@ function tryExtract(labels: string[]): string | null {
   return null;
 }
 
+function getPageText(limit = 4000): string {
+  return document.body?.innerText?.replace(/\s+/g, " ").trim().slice(0, limit) ?? "";
+}
+
+function extractFromSummary(regex: RegExp): string | null {
+  const pageText = getPageText();
+  const match = pageText.match(regex);
+  return match?.[1]?.trim() || match?.[0]?.trim() || null;
+}
+
+function extractDeviceModel(): string | null {
+  const byLabel = tryExtract(LABELS.deviceModel);
+  if (byLabel && !/^M[A-Z0-9]+/i.test(byLabel)) {
+    return byLabel;
+  }
+
+  const fromSummary = extractFromSummary(SUMMARY_PATTERNS.deviceModel);
+  if (fromSummary) {
+    return fromSummary.replace(/\s*\|\s*$/, "").trim();
+  }
+
+  return byLabel;
+}
+
+function extractMdn(): string | null {
+  const byLabel = tryExtract(LABELS.mdn);
+  if (byLabel) return byLabel;
+
+  const fromSummary = extractFromSummary(SUMMARY_PATTERNS.phoneNumber);
+  return fromSummary ? fromSummary.replace(/\s+/g, " ").trim() : null;
+}
+
+function extractIosVersion(): string | null {
+  const byLabel = tryExtract(LABELS.iosVersion);
+  if (byLabel) return byLabel;
+
+  const fromSummary = extractFromSummary(SUMMARY_PATTERNS.iosVersion);
+  return fromSummary;
+}
+
+function extractOwnershipType(): string | null {
+  const byLabel = tryExtract(LABELS.ownershipType);
+  if (byLabel) return normalizeOwnership(byLabel);
+
+  const text = getPageText(8000);
+  if (/\bBYOD\b/i.test(text)) return "BYOD";
+  if (/\bCorp\b|\bCorporate\b|company[- ]owned/i.test(text)) return "Corp";
+
+  return null;
+}
+
+function normalizeOwnership(value: string): string {
+  if (/\bBYOD\b/i.test(value)) return "BYOD";
+  if (/\bCorp\b|\bCorporate\b|company[- ]owned/i.test(value)) return "Corp";
+  return value.trim();
+}
+
 function extractDeviceDetails(): DeviceDetails {
   return {
-    ownershipType: tryExtract(LABELS.ownershipType),
-    deviceModel: tryExtract(LABELS.deviceModel),
+    ownershipType: extractOwnershipType(),
+    deviceModel: extractDeviceModel(),
     serialNumber: tryExtract(LABELS.serialNumber),
-    mdn: tryExtract(LABELS.mdn),
-    iosVersion: tryExtract(LABELS.iosVersion),
+    mdn: extractMdn(),
+    iosVersion: extractIosVersion(),
   };
 }
 
@@ -170,4 +235,19 @@ function injectCaptureButton(): void {
 
 // ── Init ────────────────────────────────────────────────────────────
 
-injectCaptureButton();
+function init(): void {
+  injectCaptureButton();
+
+  // MobileIron/Ivanti is a SPA. Keep the capture button alive across route changes.
+  const observer = new MutationObserver(() => {
+    if (!document.getElementById("snff-ivanti-btn")) {
+      injectCaptureButton();
+    }
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+}
+
+init();

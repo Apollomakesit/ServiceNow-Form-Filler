@@ -11,7 +11,7 @@
  *   3. Fall back to reading individual form fields by label.
  */
 
-import { CaseDetailsSchema } from "../../shared/schemas";
+import { CaseDetailsSchema, type CaseDetails } from "../../shared/schemas";
 import type { ExtensionMessage } from "../../shared/messages";
 import { parseDescription } from "./parser";
 
