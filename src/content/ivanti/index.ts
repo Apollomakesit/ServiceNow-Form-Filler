@@ -54,7 +54,7 @@ function sendToBackground(deviceData: DeviceDetails, userData: CaseDetails | nul
 function diagString(data: DeviceDetails, userData: CaseDetails | null): string {
   const deviceEntries = Object.entries(data);
   const userEntries: [string, string | null][] = userData
-    ? [["name", userData.name], ["email", userData.email], ["adx", userData.adx]]
+    ? [["name", userData.name], ["adx", userData.adx]]
     : [];
   const allEntries = [...userEntries, ...deviceEntries];
   const found = allEntries.filter(([, v]) => v !== null).map(([k, v]) => `${k}: ${v}`);
@@ -65,7 +65,7 @@ function diagString(data: DeviceDetails, userData: CaseDetails | null): string {
   return msg;
 }
 
-// ── Inject capture button ───────────────────────────────────────────
+// ── Inject capture button (draggable + auto-copy) ───────────────────
 
 function injectCaptureButton(): void {
   if (document.getElementById("snff-ivanti-btn")) return;
@@ -84,20 +84,78 @@ function injectCaptureButton(): void {
     color: "#fff",
     border: "none",
     borderRadius: "6px",
-    cursor: "pointer",
+    cursor: "grab",
     fontSize: "13px",
     fontFamily: "system-ui, sans-serif",
     boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+    userSelect: "none",
   });
 
-  btn.addEventListener("click", () => {
+  // ── Drag logic ──────────────────────────────────────────────────
+  let isDragging = false;
+  let wasDragged = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let btnStartX = 0;
+  let btnStartY = 0;
+
+  const DRAG_THRESHOLD = 5; // px — ignore tiny moves as clicks
+
+  btn.addEventListener("mousedown", (e: MouseEvent) => {
+    isDragging = true;
+    wasDragged = false;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    const rect = btn.getBoundingClientRect();
+    btnStartX = rect.left;
+    btnStartY = rect.top;
+    btn.style.cursor = "grabbing";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e: MouseEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+      wasDragged = true;
+    }
+    // Remove bottom/right anchoring; use top/left for free positioning
+    btn.style.bottom = "auto";
+    btn.style.right = "auto";
+    btn.style.left = `${btnStartX + dx}px`;
+    btn.style.top = `${btnStartY + dy}px`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (isDragging) {
+      isDragging = false;
+      btn.style.cursor = "grab";
+    }
+  });
+
+  // ── Capture click (only fires if not dragged) ─────────────────
+  btn.addEventListener("click", async () => {
+    if (wasDragged) return; // was a drag, not a click
+
     const data = captureDeviceDetails();
     const userData = captureUserDetails();
     if (data) {
       sendToBackground(data, userData);
+
+      // Auto-copy formatted work notes to clipboard
+      const { mergeToTemplate, formatWorkNotes } = await import("../../shared/formatter");
+      const merged = mergeToTemplate(userData, data);
+      const workNotesText = formatWorkNotes(merged);
+      try {
+        await navigator.clipboard.writeText(workNotesText);
+      } catch {
+        // Clipboard may be unavailable — data is still sent to background
+      }
+
       const deviceEntries = Object.entries(data);
       const userFields: [string, string | null][] = userData
-        ? [["name", userData.name], ["email", userData.email], ["adx", userData.adx]]
+        ? [["name", userData.name], ["adx", userData.adx]]
         : [];
       const allEntries = [...userFields, ...deviceEntries];
       const found = allEntries.filter(([, v]) => v !== null);
@@ -105,10 +163,10 @@ function injectCaptureButton(): void {
       const total = allEntries.length;
 
       if (missing.length === 0) {
-        btn.textContent = `✅ Captured (${found.length}/${total})`;
+        btn.textContent = `✅ Captured & Copied (${found.length}/${total})`;
         btn.style.backgroundColor = "#107c10";
       } else {
-        btn.textContent = `⚠️ Captured (${found.length}/${total} fields)`;
+        btn.textContent = `⚠️ Captured & Copied (${found.length}/${total} fields)`;
         btn.style.backgroundColor = "#ff8c00";
       }
       btn.title = diagString(data, userData);

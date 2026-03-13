@@ -180,6 +180,11 @@ describe("Ivanti MobileIron parser", () => {
       const text = PAGE_IPHONE16.replace("Company Owned", "BYOD");
       expect(extractOwnershipType(text)).toBe("BYOD");
     });
+
+    it("maps 'User Owned' to BYOD", () => {
+      const text = PAGE_IPHONE16.replace("Company Owned", "User Owned");
+      expect(extractOwnershipType(text)).toBe("BYOD");
+    });
   });
 
   describe("user info extraction", () => {
@@ -241,10 +246,10 @@ describe("Ivanti MobileIron parser", () => {
   });
 
   describe("parseUserInfo", () => {
-    it("returns name, email, and ADX from device page", () => {
+    it("returns name and ADX from device page (email is null — comes from ServiceNow)", () => {
       const result = parseUserInfo(PAGE_IPHONE16);
       expect(result.name).toBe("Marcus Falz");
-      expect(result.email).toBe("E40018502@adxuser.com");
+      expect(result.email).toBeNull();
       expect(result.adx).toBe("E40018502");
       expect(result.callback).toBeNull();
       expect(result.issueMessage).toBeNull();

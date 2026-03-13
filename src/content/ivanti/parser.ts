@@ -84,6 +84,7 @@ export function extractOwnershipType(pageText: string): string | null {
   const ownership = findValueAfterLabel(pageText, "Ownership", "Ownership Type", "Device Ownership");
   if (ownership) {
     if (/\bBYOD\b/i.test(ownership)) return "BYOD";
+    if (/\bUser\s+Owned\b/i.test(ownership)) return "BYOD";
     if (/\bCompany\b|\bCorp\b|\bCorporate\b/i.test(ownership)) return "Corp";
     return ownership;
   }
@@ -95,6 +96,7 @@ export function extractOwnershipType(pageText: string): string | null {
   }
 
   if (/\bBYOD\b/.test(pageText)) return "BYOD";
+  if (/\bUser[- ]Owned\b/i.test(pageText)) return "BYOD";
   if (/\bCompany[- ]Owned\b/i.test(pageText)) return "Corp";
 
   return null;
@@ -168,13 +170,14 @@ export function parseDevicePage(pageText: string): DeviceDetails {
 }
 
 /**
- * Parse user info (name, email, ADX) from a MobileIron device page.
- * Returns a partial CaseDetails with only the fields available.
+ * Parse user info (name, ADX) from a MobileIron device page.
+ * Returns a partial CaseDetails with only the fields available from Ivanti.
+ * Note: email comes from ServiceNow (sys_readonly.sys_user.email), not Ivanti.
  */
 export function parseUserInfo(pageText: string): CaseDetails {
   return {
     name: extractUserName(pageText),
-    email: extractUserEmail(pageText),
+    email: null,
     callback: null,
     adx: extractAdx(pageText),
     issueMessage: null,

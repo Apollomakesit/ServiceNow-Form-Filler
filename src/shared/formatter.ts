@@ -8,7 +8,7 @@ export function mergeToTemplate(
   return {
     name: caseDetails?.name ?? null,
     email: caseDetails?.email ?? null,
-    callback: caseDetails?.callback ?? null,
+    callback: caseDetails?.callback ?? deviceDetails?.mdn ?? null,
     adx: caseDetails?.adx ?? null,
     corpOrByod: deviceDetails?.ownershipType ?? null,
     deviceModel: deviceDetails?.deviceModel ?? null,
@@ -17,7 +17,7 @@ export function mergeToTemplate(
     iosVersion: deviceDetails?.iosVersion ?? null,
     issueMessage: caseDetails?.issueMessage ?? null,
     troubleshoot: null,
-    escalated: null,
+    escalated: "No",
   };
 }
 

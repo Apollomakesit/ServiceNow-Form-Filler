@@ -32,13 +32,52 @@ describe("mergeToTemplate", () => {
     expect(result.iosVersion).toBe("26.3.1");
     expect(result.issueMessage).toBe("Phone is not turning on");
     expect(result.troubleshoot).toBeNull();
-    expect(result.escalated).toBeNull();
+    expect(result.escalated).toBe("No");
   });
 
   it("handles null case and device gracefully", () => {
     const result = mergeToTemplate(null, null);
     expect(result.name).toBeNull();
     expect(result.corpOrByod).toBeNull();
+    expect(result.escalated).toBe("No");
+  });
+
+  it("falls back callback to MDN when case callback is null", () => {
+    const caseData: CaseDetails = {
+      name: "Test User",
+      email: "test@example.com",
+      callback: null,
+      adx: "E12345",
+      issueMessage: null,
+    };
+    const deviceData: DeviceDetails = {
+      ownershipType: "Corp",
+      deviceModel: "iPhone 14",
+      serialNumber: "ABC123",
+      mdn: "+15551234567",
+      iosVersion: "17.0",
+    };
+    const result = mergeToTemplate(caseData, deviceData);
+    expect(result.callback).toBe("+15551234567");
+  });
+
+  it("prefers case callback over MDN fallback", () => {
+    const caseData: CaseDetails = {
+      name: "Test User",
+      email: "test@example.com",
+      callback: "5207778888",
+      adx: "E12345",
+      issueMessage: null,
+    };
+    const deviceData: DeviceDetails = {
+      ownershipType: "Corp",
+      deviceModel: "iPhone 14",
+      serialNumber: "ABC123",
+      mdn: "+15551234567",
+      iosVersion: "17.0",
+    };
+    const result = mergeToTemplate(caseData, deviceData);
+    expect(result.callback).toBe("5207778888");
   });
 });
 
@@ -99,9 +138,9 @@ describe("formatWorkNotes", () => {
 
     expect(output).toContain("Name: ");
     expect(output).toContain("Email: ");
-    // Verify each line ends with ": " (empty value)
+    // Verify each line has the "Label: value" format (value may be empty)
     for (const line of output.split("\n")) {
-      expect(line).toMatch(/^.+: $/);
+      expect(line).toMatch(/^.+: .*$/);
     }
   });
 });
