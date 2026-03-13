@@ -104,7 +104,142 @@ function queryByLabel(docs: Document[], labels: string[]): string | null {
   return null;
 }
 
+function normalizeFieldKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function matchesFieldKey(candidate: string, keys: string[]): boolean {
+  const normalizedCandidate = normalizeFieldKey(candidate);
+  return keys.some((key) => normalizedCandidate.includes(normalizeFieldKey(key)));
+}
+
+function getValueFromFormControls(keys: string[]): string | null {
+  for (const doc of getDocuments()) {
+    const controls = doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      "input, textarea, select"
+    );
+
+    for (const control of controls) {
+      const identifier = [
+        control.id,
+        control.name,
+        control.getAttribute("aria-label") ?? "",
+        control.getAttribute("placeholder") ?? "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      if (!identifier || !matchesFieldKey(identifier, keys)) {
+        continue;
+      }
+
+      const value =
+        control instanceof HTMLSelectElement
+          ? control.selectedOptions[0]?.textContent?.trim() ?? control.value.trim()
+          : control.value.trim();
+
+      if (value) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getPageTexts(): string[] {
+  return getDocuments()
+    .map((doc) => doc.body?.innerText?.trim() ?? "")
+    .filter(Boolean);
+}
+
+function findValueAfterLabelInText(text: string, labels: string[]): string | null {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!labels.some((label) => line.toLowerCase() === label.toLowerCase())) {
+      continue;
+    }
+
+    for (let valueIndex = index + 1; valueIndex < lines.length; valueIndex += 1) {
+      const candidate = lines[valueIndex];
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+function findDescriptionBlockInText(text: string): string | null {
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const descriptionIndex = lines.findIndex((line) => line.toLowerCase() === "description");
+  if (descriptionIndex === -1) {
+    return null;
+  }
+
+  const stopLabels = new Set([
+    "notes",
+    "related records",
+    "resolution information",
+    "governance",
+    "transcript",
+    "work notes",
+    "additional comments",
+    "related search results",
+    "related search",
+    "knowledge articles",
+  ]);
+
+  const collected: string[] = [];
+  for (let index = descriptionIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line) {
+      if (collected.length > 0) {
+        break;
+      }
+      continue;
+    }
+
+    if (stopLabels.has(line.toLowerCase())) {
+      break;
+    }
+
+    collected.push(line);
+  }
+
+  return collected.length > 0 ? collected.join("\n") : null;
+}
+
+function getDescriptionTextFromPageText(): string | null {
+  for (const pageText of getPageTexts()) {
+    const description = findDescriptionBlockInText(pageText);
+    if (description) {
+      return description;
+    }
+  }
+
+  return null;
+}
+
+function getFieldFromPageText(labels: string[]): string | null {
+  for (const pageText of getPageTexts()) {
+    const value = findValueAfterLabelInText(pageText, labels);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function getDescriptionText(): string | null {
+  const controlValue = getValueFromFormControls(["incident description", "description"]);
+  if (controlValue) {
+    return controlValue;
+  }
+
   for (const doc of getDocuments()) {
     for (const sel of SELECTORS.descriptionTextarea) {
       const el = doc.querySelector<HTMLTextAreaElement>(sel);
@@ -115,7 +250,8 @@ function getDescriptionText(): string | null {
       if (el?.textContent?.trim()) return el.textContent.trim();
     }
   }
-  return null;
+
+  return getDescriptionTextFromPageText();
 }
 
 function hasAnyCaseDetails(data: CaseDetails): boolean {
@@ -123,26 +259,47 @@ function hasAnyCaseDetails(data: CaseDetails): boolean {
 }
 
 function getCallerNameFromDom(): string | null {
-  return queryInput(getDocuments(), SELECTORS.callerInput) ?? queryByLabel(getDocuments(), ["Caller", "Name"]);
+  return (
+    getValueFromFormControls(["caller id", "caller"]) ??
+    queryInput(getDocuments(), SELECTORS.callerInput) ??
+    queryByLabel(getDocuments(), ["Caller", "Name"]) ??
+    getFieldFromPageText(["Caller", "Name"])
+  );
 }
 
 function getShortDescriptionFromDom(): string | null {
-  return queryInput(getDocuments(), SELECTORS.shortDescriptionInput) ?? queryByLabel(getDocuments(), ["Short description"]);
+  return (
+    getValueFromFormControls(["short description"]) ??
+    queryInput(getDocuments(), SELECTORS.shortDescriptionInput) ??
+    queryByLabel(getDocuments(), ["Short description"]) ??
+    getFieldFromPageText(["Short description"])
+  );
 }
 
 function getEmailFromVisibleDom(): string | null {
-  return queryInput(getDocuments(), SELECTORS.emailInput) ?? queryByLabel(getDocuments(), ["Email"]);
+  return (
+    getValueFromFormControls(["email", "caller email"]) ??
+    queryInput(getDocuments(), SELECTORS.emailInput) ??
+    queryByLabel(getDocuments(), ["Email"]) ??
+    getFieldFromPageText(["Email"])
+  );
 }
 
 function getCallbackFromVisibleDom(): string | null {
   return (
+    getValueFromFormControls(["callback number", "callback", "business phone", "mobile phone", "phone"]) ??
     queryInput(getDocuments(), SELECTORS.callbackInput) ??
-    queryByLabel(getDocuments(), ["Callback Number", "Business phone", "Mobile phone", "Phone"])
+    queryByLabel(getDocuments(), ["Callback Number", "Business phone", "Mobile phone", "Phone"]) ??
+    getFieldFromPageText(["Callback Number", "Business phone", "Mobile phone", "Phone"])
   );
 }
 
 function getAdxFromVisibleDom(): string | null {
-  return queryByLabel(getDocuments(), ["User ID", "Employee number", "Workday ID"]);
+  return (
+    getValueFromFormControls(["user id", "employee number", "workday id", "adx"]) ??
+    queryByLabel(getDocuments(), ["User ID", "Employee number", "Workday ID"]) ??
+    getFieldFromPageText(["User ID", "Employee number", "Workday ID"])
+  );
 }
 
 async function openCallerPreview(): Promise<void> {
