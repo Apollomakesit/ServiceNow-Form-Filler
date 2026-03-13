@@ -73,6 +73,20 @@ The user has rebooted the phone multiple times, but the issue persists.`;
     expect(result.issueMessage).toContain("company iPhone 13 is experiencing multiple communication issues");
   });
 
+  it("parses unlabeled description blocks used in ServiceNow", () => {
+    const text = `Michael Belanger
+E10251700@adxuser.com
+Michael.Belanger@collins.com
+Enrollment of upgrade device`;
+
+    const result = parseDescription(text);
+
+    expect(result.name).toBe("Michael Belanger");
+    expect(result.adx).toBe("E10251700");
+    expect(result.email).toBe("Michael.Belanger@collins.com");
+    expect(result.issueMessage).toBe("Enrollment of upgrade device");
+  });
+
   it("returns null for missing fields", () => {
     const text = `Name: Jane Smith
 Issue / Error message: Screen is cracked`;

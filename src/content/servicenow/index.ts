@@ -10,6 +10,7 @@
 
 import { CaseDetailsSchema, type CaseDetails } from "../../shared/schemas";
 import type { ExtensionMessage } from "../../shared/messages";
+import { findFieldByLabel, readInputByLabel } from "../helpers";
 import { parseDescription } from "./parser";
 
 export { parseDescription };
@@ -43,6 +44,20 @@ const SELECTORS = {
     'input[id="incident.u_callback_number"]',
     "#sys_readonly\\.incident\\.u_callback_number",
   ],
+  callerInput: [
+    "#sys_display\\.incident\\.caller_id",
+    'input[id="sys_display.incident.caller_id"]',
+    'input[name="sys_display.incident.caller_id"]',
+  ],
+  shortDescriptionInput: [
+    "#incident\\.short_description",
+    'input[id="incident.short_description"]',
+    'input[name="incident.short_description"]',
+  ],
+  callerPreviewButton: [
+    "#viewr\\.incident\\.caller_id",
+    'button[name="viewr.incident.caller_id"]',
+  ],
 };
 
 // ── DOM extraction ──────────────────────────────────────────────────
@@ -69,8 +84,21 @@ function getDocuments(): Document[] {
 function queryInput(docs: Document[], selectors: string[]): string | null {
   for (const doc of docs) {
     for (const sel of selectors) {
-      const el = doc.querySelector<HTMLInputElement>(sel);
+      const el = doc.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel);
       if (el?.value?.trim()) return el.value.trim();
+    }
+  }
+  return null;
+}
+
+function queryByLabel(docs: Document[], labels: string[]): string | null {
+  for (const doc of docs) {
+    for (const label of labels) {
+      const inputValue = readInputByLabel(doc, label);
+      if (inputValue) return inputValue;
+
+      const fieldValue = findFieldByLabel(doc, label);
+      if (fieldValue) return fieldValue;
     }
   }
   return null;
@@ -94,12 +122,45 @@ function hasAnyCaseDetails(data: CaseDetails): boolean {
   return Object.values(data).some((value) => typeof value === "string" && value.trim().length > 0);
 }
 
-function getEmailFromDom(): string | null {
-  return queryInput(getDocuments(), SELECTORS.emailInput);
+function getCallerNameFromDom(): string | null {
+  return queryInput(getDocuments(), SELECTORS.callerInput) ?? queryByLabel(getDocuments(), ["Caller", "Name"]);
 }
 
-function getCallbackFromDom(): string | null {
-  return queryInput(getDocuments(), SELECTORS.callbackInput);
+function getShortDescriptionFromDom(): string | null {
+  return queryInput(getDocuments(), SELECTORS.shortDescriptionInput) ?? queryByLabel(getDocuments(), ["Short description"]);
+}
+
+function getEmailFromVisibleDom(): string | null {
+  return queryInput(getDocuments(), SELECTORS.emailInput) ?? queryByLabel(getDocuments(), ["Email"]);
+}
+
+function getCallbackFromVisibleDom(): string | null {
+  return (
+    queryInput(getDocuments(), SELECTORS.callbackInput) ??
+    queryByLabel(getDocuments(), ["Callback Number", "Business phone", "Mobile phone", "Phone"])
+  );
+}
+
+function getAdxFromVisibleDom(): string | null {
+  return queryByLabel(getDocuments(), ["User ID", "Employee number", "Workday ID"]);
+}
+
+async function openCallerPreview(): Promise<void> {
+  if (getEmailFromVisibleDom()) {
+    return;
+  }
+
+  for (const selector of SELECTORS.callerPreviewButton) {
+    const button = document.querySelector<HTMLButtonElement>(selector);
+    if (!button) continue;
+
+    button.click();
+    await new Promise((resolve) => window.setTimeout(resolve, 600));
+
+    if (getEmailFromVisibleDom()) {
+      return;
+    }
+  }
 }
 
 /**
@@ -136,19 +197,35 @@ function getLatestAdditionalComment(): string | null {
 
 // ── Capture + send ──────────────────────────────────────────────────
 
-function captureCaseDetails(): CaseDetails | null {
+async function captureCaseDetails(): Promise<CaseDetails | null> {
   const descText = getDescriptionText();
   const parsed = descText ? parseDescription(descText) : {
     name: null, email: null, callback: null, adx: null, issueMessage: null,
   };
 
+  if (!parsed.name) {
+    parsed.name = getCallerNameFromDom();
+  }
+
+  if (!parsed.issueMessage) {
+    parsed.issueMessage = getShortDescriptionFromDom();
+  }
+
+  if (!parsed.email || !parsed.adx) {
+    await openCallerPreview();
+  }
+
   // Override email from the real ServiceNow email field
-  const domEmail = getEmailFromDom();
+  const domEmail = getEmailFromVisibleDom();
   if (domEmail) parsed.email = domEmail;
 
   // Override callback from the ServiceNow callback field
-  const domCallback = getCallbackFromDom();
+  const domCallback = getCallbackFromVisibleDom();
   if (domCallback) parsed.callback = domCallback;
+
+  if (!parsed.adx) {
+    parsed.adx = getAdxFromVisibleDom();
+  }
 
   // Extract issue/troubleshoot from most recent work note comment
   const latestComment = getLatestAdditionalComment();
@@ -216,8 +293,8 @@ function injectCaptureButton(): void {
     boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
   });
 
-  btn.addEventListener("click", () => {
-    const data = captureCaseDetails();
+  btn.addEventListener("click", async () => {
+    const data = await captureCaseDetails();
     if (data) {
       sendToBackground(data);
       btn.textContent = "✅ Case Captured";

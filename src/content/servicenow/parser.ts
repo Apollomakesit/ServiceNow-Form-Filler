@@ -56,9 +56,11 @@ export function parseDescription(text: string): CaseDetails {
       "issue description"
     );
 
+  const fallback = extractFallbackValues(lines);
+
   return {
-    name: get("name", "caller", "user"),
-    email: get("email", "e-mail", "mail"),
+    name: get("name", "caller", "user") ?? fallback.name,
+    email: get("email", "e-mail", "mail") ?? fallback.email,
     callback: get(
       "callback",
       "callback number",
@@ -66,7 +68,7 @@ export function parseDescription(text: string): CaseDetails {
       "phone",
       "cb",
       "preferred contact number"
-    ),
+    ) ?? fallback.callback,
     adx: get(
       "adx",
       "employee id",
@@ -75,9 +77,49 @@ export function parseDescription(text: string): CaseDetails {
       "id",
       "user id",
       "uid"
-    ),
+    ) ?? fallback.adx,
+    issueMessage: issueMessage ?? fallback.issueMessage,
+  };
+}
+
+function extractFallbackValues(lines: string[]): CaseDetails {
+  const nonEmptyLines = lines.filter(Boolean);
+  const emailLines = nonEmptyLines.filter((line) => isEmail(line));
+  const adxEmail = emailLines.find((line) => /@adxuser\./i.test(line));
+  const corpEmail = emailLines.find((line) => !/@adxuser\./i.test(line)) ?? null;
+  const adxFromEmail = adxEmail ? adxEmail.split("@")[0].trim() : null;
+  const adxLine = nonEmptyLines.find((line) => /^E\d{6,}$/i.test(line)) ?? null;
+  const callbackLine = nonEmptyLines.find((line) => looksLikePhone(line)) ?? null;
+
+  const name = nonEmptyLines.find(
+    (line) => !isEmail(line) && !looksLikePhone(line) && !/^E\d{6,}$/i.test(line)
+  ) ?? null;
+
+  const issueCandidates = nonEmptyLines.filter(
+    (line) =>
+      line !== name &&
+      !isEmail(line) &&
+      !looksLikePhone(line) &&
+      !/^E\d{6,}$/i.test(line)
+  );
+  const issueMessage = issueCandidates.length > 0 ? issueCandidates[issueCandidates.length - 1] : null;
+
+  return {
+    name,
+    email: corpEmail,
+    callback: callbackLine,
+    adx: adxFromEmail ?? adxLine,
     issueMessage,
   };
+}
+
+function isEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(value.trim());
+}
+
+function looksLikePhone(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15;
 }
 
 /**
