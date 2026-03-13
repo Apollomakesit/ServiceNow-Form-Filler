@@ -449,16 +449,8 @@ function sendToBackground(data: CaseDetails): void {
 }
 
 function isIncidentFormDocument(root: ParentNode = document): boolean {
-  if (
+  return Boolean(
     root.querySelector(
-      "#incident\\.description, #incident\\.short_description, #sys_display\\.incident\\.caller_id, #incident\\.u_callback_number"
-    )
-  ) {
-    return true;
-  }
-
-  return getDocuments().some((doc) =>
-    doc.querySelector(
       "#incident\\.description, #incident\\.short_description, #sys_display\\.incident\\.caller_id, #incident\\.u_callback_number"
     )
   );
