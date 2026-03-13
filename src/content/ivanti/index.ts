@@ -11,6 +11,7 @@
 
 import { DeviceDetailsSchema, CaseDetailsSchema, type DeviceDetails, type CaseDetails } from "../../shared/schemas";
 import type { ExtensionMessage } from "../../shared/messages";
+import { loadCaseDetails } from "../../shared/storage";
 import { parseDevicePage, parseUserInfo } from "./parser";
 
 // ── Main extraction ─────────────────────────────────────────────────
@@ -143,9 +144,19 @@ function injectCaptureButton(): void {
     if (data) {
       sendToBackground(data, userData);
 
+      // Load previously saved ServiceNow case details and merge with Ivanti user data
+      const storedCase = await loadCaseDetails();
+      const mergedCase: CaseDetails = {
+        name: userData?.name ?? storedCase?.name ?? null,
+        email: storedCase?.email ?? userData?.email ?? null,
+        callback: storedCase?.callback ?? null,
+        adx: userData?.adx ?? storedCase?.adx ?? null,
+        issueMessage: storedCase?.issueMessage ?? null,
+      };
+
       // Auto-copy formatted work notes to clipboard
       const { mergeToTemplate, formatWorkNotes } = await import("../../shared/formatter");
-      const merged = mergeToTemplate(userData, data);
+      const merged = mergeToTemplate(mergedCase, data);
       const workNotesText = formatWorkNotes(merged);
       try {
         await navigator.clipboard.writeText(workNotesText);
