@@ -60,6 +60,15 @@ const SELECTORS = {
   ],
 };
 
+const FIELD_IDS = {
+  description: "incident.description",
+  shortDescription: "incident.short_description",
+  caller: "sys_display.incident.caller_id",
+  callback: "incident.u_callback_number",
+  callerPreview: "viewr.incident.caller_id",
+  emailCandidates: ["sys_readonly.sys_user.email", "sys_readonly.incident.caller_id.email"],
+} as const;
+
 // ── DOM extraction ──────────────────────────────────────────────────
 
 /** Try to get a document — either the main document or inside the gsft_main iframe. */
@@ -105,6 +114,39 @@ function queryInput(docs: Document[], selectors: string[]): string | null {
       if (el?.value?.trim()) return el.value.trim();
     }
   }
+  return null;
+}
+
+function getElementValueById(doc: Document, id: string): string | null {
+  const element = doc.getElementById(id) as
+    | HTMLInputElement
+    | HTMLTextAreaElement
+    | HTMLSelectElement
+    | null;
+
+  if (!element) {
+    return null;
+  }
+
+  if (element instanceof HTMLSelectElement) {
+    return element.selectedOptions[0]?.textContent?.trim() ?? element.value.trim() || null;
+  }
+
+  if ("value" in element && typeof element.value === "string") {
+    return element.value.trim() || null;
+  }
+
+  return element.textContent?.trim() || null;
+}
+
+function getValueByIdAcrossDocuments(id: string): string | null {
+  for (const doc of getDocuments()) {
+    const value = getElementValueById(doc, id);
+    if (value) {
+      return value;
+    }
+  }
+
   return null;
 }
 
@@ -256,6 +298,11 @@ function getFieldFromPageText(labels: string[]): string | null {
 }
 
 function getDescriptionText(): string | null {
+  const directValue = getValueByIdAcrossDocuments(FIELD_IDS.description);
+  if (directValue) {
+    return directValue;
+  }
+
   for (const doc of getDocuments()) {
     for (const sel of SELECTORS.descriptionTextarea) {
       const el = doc.querySelector<HTMLTextAreaElement>(sel);
@@ -281,6 +328,7 @@ function hasAnyCaseDetails(data: CaseDetails): boolean {
 
 function getCallerNameFromDom(): string | null {
   return (
+    getValueByIdAcrossDocuments(FIELD_IDS.caller) ??
     queryInput(getDocuments(), SELECTORS.callerInput) ??
     queryByLabel(getDocuments(), ["Caller", "Name"]) ??
     getValueFromFormControls(["caller id", "caller"]) ??
@@ -290,6 +338,7 @@ function getCallerNameFromDom(): string | null {
 
 function getShortDescriptionFromDom(): string | null {
   return (
+    getValueByIdAcrossDocuments(FIELD_IDS.shortDescription) ??
     queryInput(getDocuments(), SELECTORS.shortDescriptionInput) ??
     queryByLabel(getDocuments(), ["Short description"]) ??
     getValueFromFormControls(["short description"]) ??
@@ -298,6 +347,13 @@ function getShortDescriptionFromDom(): string | null {
 }
 
 function getEmailFromVisibleDom(): string | null {
+  for (const id of FIELD_IDS.emailCandidates) {
+    const directValue = getValueByIdAcrossDocuments(id);
+    if (directValue) {
+      return directValue;
+    }
+  }
+
   return (
     queryInput(getDocuments(), SELECTORS.emailInput) ??
     queryByLabel(getDocuments(), ["Email"]) ??
@@ -308,6 +364,7 @@ function getEmailFromVisibleDom(): string | null {
 
 function getCallbackFromVisibleDom(): string | null {
   return (
+    getValueByIdAcrossDocuments(FIELD_IDS.callback) ??
     queryInput(getDocuments(), SELECTORS.callbackInput) ??
     queryByLabel(getDocuments(), ["Callback Number", "Business phone", "Mobile phone", "Phone"]) ??
     getValueFromFormControls(["callback number", "callback", "business phone", "mobile phone", "phone"]) ??
@@ -336,6 +393,15 @@ async function openCallerPreview(): Promise<void> {
       button.click();
       await new Promise((resolve) => window.setTimeout(resolve, 600));
 
+      if (getEmailFromVisibleDom()) {
+        return;
+      }
+    }
+
+    const directButton = doc.getElementById(FIELD_IDS.callerPreview) as HTMLButtonElement | null;
+    if (directButton) {
+      directButton.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 600));
       if (getEmailFromVisibleDom()) {
         return;
       }
