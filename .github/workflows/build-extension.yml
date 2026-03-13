@@ -2,6 +2,10 @@ name: Build Chrome Extension
 
 run-name: Build extension for ${{ github.ref_name }} @ ${{ github.sha }}
 
+concurrency:
+  group: build-extension-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -23,6 +27,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -32,6 +39,27 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Stamp manifest build version
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const manifestPath = 'manifest.json';
+          const packagePath = 'package.json';
+
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+
+          const [major = '1', minor = '0'] = String(pkg.version || '1.0.0').split('.');
+          const runNumber = process.env.GITHUB_RUN_NUMBER;
+          const sha = process.env.GITHUB_SHA.slice(0, 7);
+
+          manifest.version = `${major}.${minor}.${runNumber}`;
+          manifest.version_name = `${pkg.version}+build.${runNumber}.${sha}`;
+
+          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+          console.log(`Stamped manifest version=${manifest.version} version_name=${manifest.version_name}`);
+          EOF
 
       - name: Run tests
         run: npm test
@@ -47,6 +75,8 @@ jobs:
             "ref": "${{ github.ref_name }}",
             "runNumber": "${{ github.run_number }}",
             "runId": "${{ github.run_id }}",
+            "manifestVersion": "$(node -p "require('./manifest.json').version")",
+            "manifestVersionName": "$(node -p "require('./manifest.json').version_name")",
             "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           EOF

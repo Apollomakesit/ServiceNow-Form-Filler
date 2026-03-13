@@ -10,6 +10,7 @@ const preview = document.getElementById("preview") as HTMLTextAreaElement;
 const btnCopy = document.getElementById("btn-copy") as HTMLButtonElement;
 const btnClear = document.getElementById("btn-clear") as HTMLButtonElement;
 const feedback = document.getElementById("feedback")!;
+const buildVersion = document.getElementById("build-version")!;
 
 // ── State ───────────────────────────────────────────────────────────
 
@@ -54,6 +55,15 @@ function showFeedback(msg: string, type: "success" | "error" = "success"): void 
   }, 2500);
 }
 
+function loadBuildVersion(): void {
+  const manifest = chrome.runtime.getManifest();
+  const versionLabel = manifest.version_name
+    ? `${manifest.version} (${manifest.version_name})`
+    : manifest.version;
+
+  buildVersion.textContent = `Version: ${versionLabel}`;
+}
+
 // ── Load current state from background ──────────────────────────────
 
 function loadStatus(): void {
@@ -94,4 +104,5 @@ btnClear.addEventListener("click", () => {
 
 // ── Init ────────────────────────────────────────────────────────────
 
+loadBuildVersion();
 loadStatus();

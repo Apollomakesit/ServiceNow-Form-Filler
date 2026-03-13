@@ -130,3 +130,10 @@ body {
 .feedback-error {
   color: #d83b01;
 }
+
+.build-version {
+  text-align: center;
+  font-size: 11px;
+  color: #666;
+  font-family: "Consolas", "Courier New", monospace;
+}
