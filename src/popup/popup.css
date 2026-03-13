@@ -1,0 +1,132 @@
+/* ── Popup: ServiceNow Form Filler ─────────────────────────────────── */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  color: #1a1a1a;
+  background: #f5f5f5;
+  width: 380px;
+}
+
+.popup {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.popup-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0078d4;
+  text-align: center;
+}
+
+/* ── Status badges ────────────────────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge-pending {
+  background: #e0e0e0;
+  color: #666;
+}
+
+.badge-ok {
+  background: #dff6dd;
+  color: #107c10;
+}
+
+/* ── Preview textarea ─────────────────────────────────────────────── */
+
+.preview {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #fff;
+  color: #1a1a1a;
+  resize: vertical;
+}
+
+.preview:focus {
+  outline: 2px solid #0078d4;
+  border-color: transparent;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #0078d4;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #106ebe;
+}
+
+.btn-secondary {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background: #ccc;
+}
+
+/* ── Feedback ─────────────────────────────────────────────────────── */
+
+.feedback {
+  text-align: center;
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.feedback-success {
+  color: #107c10;
+}
+
+.feedback-error {
+  color: #d83b01;
+}

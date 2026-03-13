@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ServiceNow Form Filler</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup">
+    <h1 class="popup-title">Work Notes Builder</h1>
+
+    <div class="status-bar">
+      <span id="status-case" class="badge badge-pending">ServiceNow: —</span>
+      <span id="status-device" class="badge badge-pending">Ivanti: —</span>
+    </div>
+
+    <textarea id="preview" class="preview" rows="14" readonly placeholder="Captured data will appear here…"></textarea>
+
+    <div class="actions">
+      <button id="btn-copy" class="btn btn-primary" disabled>Copy to Clipboard</button>
+      <button id="btn-clear" class="btn btn-secondary">Clear Data</button>
+    </div>
+
+    <p id="feedback" class="feedback"></p>
+  </div>
+
+  <script type="module" src="popup.ts"></script>
+</body>
+</html>
