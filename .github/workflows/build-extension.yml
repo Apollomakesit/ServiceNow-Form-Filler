@@ -1,5 +1,7 @@
 name: Build Chrome Extension
 
+run-name: Build extension for ${{ github.ref_name }} @ ${{ github.sha }}
+
 on:
   push:
     branches:
@@ -15,6 +17,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ARTIFACT_SUFFIX: ${{ github.run_number }}-${{ github.sha }}
 
     steps:
       - name: Checkout repository
@@ -35,19 +39,31 @@ jobs:
       - name: Build extension
         run: npm run build
 
+      - name: Write build metadata
+        run: |
+          cat > dist/build-info.json <<EOF
+          {
+            "commit": "${{ github.sha }}",
+            "ref": "${{ github.ref_name }}",
+            "runNumber": "${{ github.run_number }}",
+            "runId": "${{ github.run_id }}",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
       - name: Archive dist folder
         run: |
           cd dist
-          zip -r ../servicenow-form-filler-dist.zip .
+          zip -r ../servicenow-form-filler-dist-${{ github.run_number }}-${{ github.sha }}.zip .
 
       - name: Upload dist folder artifact
         uses: actions/upload-artifact@v7
         with:
-          name: servicenow-form-filler-dist
+          name: servicenow-form-filler-dist-${{ github.run_number }}-${{ github.sha }}
           path: dist
 
       - name: Upload zipped extension artifact
         uses: actions/upload-artifact@v7
         with:
-          name: servicenow-form-filler-zip
-          path: servicenow-form-filler-dist.zip
+          name: servicenow-form-filler-zip-${{ github.run_number }}-${{ github.sha }}
+          path: servicenow-form-filler-dist-${{ github.run_number }}-${{ github.sha }}.zip
