@@ -18,10 +18,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -41,13 +41,13 @@ jobs:
           zip -r ../servicenow-form-filler-dist.zip .
 
       - name: Upload dist folder artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: servicenow-form-filler-dist
           path: dist
 
       - name: Upload zipped extension artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: servicenow-form-filler-zip
           path: servicenow-form-filler-dist.zip
