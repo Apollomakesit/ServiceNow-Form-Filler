@@ -22,11 +22,14 @@ const SELECTORS = {
     'textarea[aria-label="Description"]',
     "#incident\\.description",
     'textarea[name="description"]',
+    'textarea[name="incident.description"]',
   ],
   /** Rendered read-only description block. */
   descriptionReadOnly: [
     '[data-field="description"] .sn-widget-textblock-body',
-    '[id*="description"] .form-control-static',
+    '#element\\.incident\\.description .form-control-static',
+    '#element\\.incident\\.description .sn-widget-textblock-body',
+    '[data-name="incident.description"] .form-control-static',
   ],
   /** Real user email (read-only input). */
   emailInput: [
@@ -85,6 +88,10 @@ function getDescriptionText(): string | null {
     }
   }
   return null;
+}
+
+function hasAnyCaseDetails(data: CaseDetails): boolean {
+  return Object.values(data).some((value) => typeof value === "string" && value.trim().length > 0);
 }
 
 function getEmailFromDom(): string | null {
@@ -153,7 +160,11 @@ function captureCaseDetails(): CaseDetails | null {
   }
 
   const result = CaseDetailsSchema.safeParse(parsed);
-  return result.success ? result.data : null;
+  if (!result.success || !hasAnyCaseDetails(result.data)) {
+    return null;
+  }
+
+  return result.data;
 }
 
 /**

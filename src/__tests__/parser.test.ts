@@ -36,6 +36,43 @@ Error message: Cannot activate device`;
     expect(result.issueMessage).toBe("Cannot activate device");
   });
 
+  it("handles ServiceNow labels from real incidents", () => {
+    const text = `Name: Duane Sept
+User ID: E10665543
+Asset Tag: usm206531
+Preferred Contact Method: Cell / MS Teams
+Callback Number: +1 425-210-0421
+Short Description: Lost or Stolen phone
+Email: DUANE.SEPT@collins.com
+Location: Onsite`;
+
+    const result = parseDescription(text);
+
+    expect(result.name).toBe("Duane Sept");
+    expect(result.email).toBe("DUANE.SEPT@collins.com");
+    expect(result.callback).toBe("+1 425-210-0421");
+    expect(result.adx).toBe("E10665543");
+    expect(result.issueMessage).toBe("Lost or Stolen phone");
+  });
+
+  it("handles description-of-the-issue labels", () => {
+    const text = `Name: David Ortegon
+Asset Tag: RMDU0043618
+Phone: 520-330-7589
+Email: david.a.ortegon@rtx.com
+
+Description of the Issue:
+The user reported that their company iPhone 13 is experiencing multiple communication issues.
+The user has rebooted the phone multiple times, but the issue persists.`;
+
+    const result = parseDescription(text);
+
+    expect(result.name).toBe("David Ortegon");
+    expect(result.email).toBe("david.a.ortegon@rtx.com");
+    expect(result.callback).toBe("520-330-7589");
+    expect(result.issueMessage).toContain("company iPhone 13 is experiencing multiple communication issues");
+  });
+
   it("returns null for missing fields", () => {
     const text = `Name: Jane Smith
 Issue / Error message: Screen is cracked`;

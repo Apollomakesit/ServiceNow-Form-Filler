@@ -42,14 +42,40 @@ export function parseDescription(text: string): CaseDetails {
       "error message",
       "error",
       "issue / error",
-      "description"
-    ) || extractMultiLineField(lines, "issue");
+      "description",
+      "description of the issue",
+      "issue description",
+      "short description"
+    ) ||
+    extractMultiLineField(
+      lines,
+      "issue",
+      "issue / error message",
+      "issue/error message",
+      "description of the issue",
+      "issue description"
+    );
 
   return {
     name: get("name", "caller", "user"),
     email: get("email", "e-mail", "mail"),
-    callback: get("callback", "callback number", "phone", "cb"),
-    adx: get("adx", "employee id", "emp id", "employee", "id"),
+    callback: get(
+      "callback",
+      "callback number",
+      "call back number",
+      "phone",
+      "cb",
+      "preferred contact number"
+    ),
+    adx: get(
+      "adx",
+      "employee id",
+      "emp id",
+      "employee",
+      "id",
+      "user id",
+      "uid"
+    ),
     issueMessage,
   };
 }
@@ -58,16 +84,19 @@ export function parseDescription(text: string): CaseDetails {
  * If the issue text spans multiple lines after a label, grab everything
  * from that label to the next label-like line or end of text.
  */
-function extractMultiLineField(lines: string[], prefix: string): string | null {
+function extractMultiLineField(lines: string[], ...prefixes: string[]): string | null {
   let capturing = false;
   const collected: string[] = [];
 
   for (const line of lines) {
     if (!capturing) {
-      if (line.toLowerCase().startsWith(prefix.toLowerCase() + ":")) {
-        const afterColon = line.slice(line.indexOf(":") + 1).trim();
-        if (afterColon) collected.push(afterColon);
-        capturing = true;
+      for (const prefix of prefixes) {
+        if (line.toLowerCase().startsWith(prefix.toLowerCase() + ":")) {
+          const afterColon = line.slice(line.indexOf(":") + 1).trim();
+          if (afterColon) collected.push(afterColon);
+          capturing = true;
+          break;
+        }
       }
     } else {
       // Stop if we hit another "Label:" pattern
