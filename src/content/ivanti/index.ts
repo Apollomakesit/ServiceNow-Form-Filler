@@ -3,138 +3,21 @@
  *
  * Target URL pattern: na3.mobileiron.com/index.html#!/devices/detail/...
  *
- * The page is an AngularJS SPA with hash-based routing.
- * Content is rendered asynchronously after the shell loads, so
- * extraction must wait for real data to appear in the DOM.
- *
- * Known page structure (from live screenshot):
- *   - Header/summary bar: "iPhone 12 | Phone #: +1... | Space: ... | Status: Active | ..."
- *   - Table under "General" tab with label→value rows:
- *       Serial Number    H4YJ82YB0F00
- *       Model Number     MGHN3VC/A
- *       Manufacturer     Apple
- *       Device Location  Disabled in RTX - BYOD Privacy
- *   - iOS/OS version may appear further down the page or on a different tab.
+ * The page is an AngularJS SPA with hash-based routing.  Content is
+ * rendered with CSS-styled divs (NOT HTML <table> elements), so we
+ * extract data from document.body.innerText which reliably contains
+ * label/value pairs on consecutive lines.
  */
 
 import { DeviceDetailsSchema, type DeviceDetails } from "../../shared/schemas";
 import type { ExtensionMessage } from "../../shared/messages";
-
-// ── Page text helper ────────────────────────────────────────────────
-
-function getPageText(): string {
-  return document.body?.innerText ?? "";
-}
-
-// ── Table extraction (primary strategy for MobileIron) ──────────────
-// MobileIron renders device details in <table> rows where the first
-// cell is the label and the second cell is the value.
-
-function findTableValue(...labelVariants: string[]): string | null {
-  const rows = document.querySelectorAll("tr");
-  for (const row of rows) {
-    const cells = row.querySelectorAll("td, th");
-    if (cells.length < 2) continue;
-    const cellText = cells[0].textContent?.trim().toLowerCase() ?? "";
-    for (const label of labelVariants) {
-      if (cellText === label.toLowerCase()) {
-        const val = cells[1].textContent?.trim();
-        if (val && val.toLowerCase() !== "n/a") return val;
-      }
-    }
-  }
-  return null;
-}
-
-// ── Summary / header bar extraction ─────────────────────────────────
-// MobileIron shows a pipe-delimited summary line near the top:
-// "iPhone 12 | Phone #: +12892188428 | Space: Default Space | ..."
-
-function matchPageText(regex: RegExp): string | null {
-  const text = getPageText();
-  const match = text.match(regex);
-  return match?.[1]?.trim() || null;
-}
-
-// ── Per-field extractors tailored to MobileIron layout ──────────────
-
-function extractSerialNumber(): string | null {
-  return findTableValue("serial number", "serial", "serial no", "serial #", "device serial");
-}
-
-function extractModelNumber(): string | null {
-  return findTableValue("model number", "model", "model name", "device model", "product name");
-}
-
-function extractDeviceModel(): string | null {
-  // Prefer the friendly name like "iPhone 12" from the summary bar
-  const fromSummary = matchPageText(/\b(iPhone\s+[\w\s]+?)(?:\s*\||$)/i)
-    ?? matchPageText(/\b(iPad\s+[\w\s]+?)(?:\s*\||$)/i);
-  if (fromSummary) return fromSummary.trim();
-
-  // Fall back to the table "Model Number" which may be a code like MGHN3VC/A
-  return extractModelNumber();
-}
-
-function extractMdn(): string | null {
-  // MobileIron shows "Phone #: +12892188428" in the summary bar
-  const fromSummary = matchPageText(/Phone\s*#\s*:?\s*([+()\-\d\s]{7,})/i);
-  if (fromSummary) return fromSummary.replace(/\s+/g, "").trim();
-
-  // Also try table labels
-  return findTableValue("mdn", "phone number", "phone #", "mobile number",
-    "cellular number", "telephone", "line number");
-}
-
-function extractIosVersion(): string | null {
-  // Try table labels first
-  const fromTable = findTableValue("os version", "ios version",
-    "operating system version", "software version", "system version", "os");
-  if (fromTable) return fromTable;
-
-  // Try matching version-like text from the page
-  const fromText = matchPageText(
-    /(?:iOS|OS)\s*(?:Version)?\s*:?\s*(\d+(?:\.\d+)+)/i
-  );
-  return fromText;
-}
-
-function extractOwnershipType(): string | null {
-  // Try direct table labels
-  const fromTable = findTableValue("ownership", "ownership type",
-    "corp/byod", "device ownership", "managed by");
-  if (fromTable) {
-    if (/\bBYOD\b/i.test(fromTable)) return "BYOD";
-    if (/\bCorp\b|\bCorporate\b/i.test(fromTable)) return "Corp";
-    return fromTable;
-  }
-
-  // MobileIron's "Device Location" field often contains BYOD or Corp hints
-  // e.g. "Disabled in RTX - BYOD Privacy"
-  const deviceLocation = findTableValue("device location");
-  if (deviceLocation) {
-    if (/\bBYOD\b/i.test(deviceLocation)) return "BYOD";
-    if (/\bCorp\b|\bCorporate\b/i.test(deviceLocation)) return "Corp";
-  }
-
-  // Last resort: scan full page text
-  const text = getPageText();
-  if (/\bBYOD\b/.test(text)) return "BYOD";
-  if (/\bCorporate\b|company[- ]owned/i.test(text)) return "Corp";
-
-  return null;
-}
+import { parseDevicePage } from "./parser";
 
 // ── Main extraction ─────────────────────────────────────────────────
 
 function extractDeviceDetails(): DeviceDetails {
-  return {
-    ownershipType: extractOwnershipType(),
-    deviceModel: extractDeviceModel(),
-    serialNumber: extractSerialNumber(),
-    mdn: extractMdn(),
-    iosVersion: extractIosVersion(),
-  };
+  const pageText = document.body?.innerText ?? "";
+  return parseDevicePage(pageText);
 }
 
 // ── Capture + send ──────────────────────────────────────────────────
