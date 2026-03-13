@@ -65,19 +65,36 @@ const SELECTORS = {
 /** Try to get a document — either the main document or inside the gsft_main iframe. */
 function getDocuments(): Document[] {
   const docs: Document[] = [document];
+  const seen = new Set<Document>(docs);
+
+  function addDoc(doc: Document | null | undefined): void {
+    if (!doc || seen.has(doc)) {
+      return;
+    }
+
+    seen.add(doc);
+    docs.push(doc);
+  }
 
   const iframes = document.querySelectorAll<HTMLIFrameElement>(
     'iframe[name*="gsft_main"], iframe#gsft_main'
   );
   for (const iframe of iframes) {
     try {
-      if (iframe.contentDocument) {
-        docs.push(iframe.contentDocument);
-      }
+      addDoc(iframe.contentDocument);
     } catch {
       // Cross-origin iframe — can't access
     }
   }
+
+  for (let index = 0; index < window.frames.length; index += 1) {
+    try {
+      addDoc(window.frames[index].document);
+    } catch {
+      // Cross-origin frame — can't access
+    }
+  }
+
   return docs;
 }
 
@@ -311,15 +328,17 @@ async function openCallerPreview(): Promise<void> {
     return;
   }
 
-  for (const selector of SELECTORS.callerPreviewButton) {
-    const button = document.querySelector<HTMLButtonElement>(selector);
-    if (!button) continue;
+  for (const doc of getDocuments()) {
+    for (const selector of SELECTORS.callerPreviewButton) {
+      const button = doc.querySelector<HTMLButtonElement>(selector);
+      if (!button) continue;
 
-    button.click();
-    await new Promise((resolve) => window.setTimeout(resolve, 600));
+      button.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 600));
 
-    if (getEmailFromVisibleDom()) {
-      return;
+      if (getEmailFromVisibleDom()) {
+        return;
+      }
     }
   }
 }
@@ -430,8 +449,16 @@ function sendToBackground(data: CaseDetails): void {
 }
 
 function isIncidentFormDocument(root: ParentNode = document): boolean {
-  return Boolean(
+  if (
     root.querySelector(
+      "#incident\\.description, #incident\\.short_description, #sys_display\\.incident\\.caller_id, #incident\\.u_callback_number"
+    )
+  ) {
+    return true;
+  }
+
+  return getDocuments().some((doc) =>
+    doc.querySelector(
       "#incident\\.description, #incident\\.short_description, #sys_display\\.incident\\.caller_id, #incident\\.u_callback_number"
     )
   );
