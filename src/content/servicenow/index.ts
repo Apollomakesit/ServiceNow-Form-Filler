@@ -120,6 +120,10 @@ function getValueFromFormControls(keys: string[]): string | null {
     );
 
     for (const control of controls) {
+      if (control instanceof HTMLInputElement && control.type.toLowerCase() === "hidden") {
+        continue;
+      }
+
       const identifier = [
         control.id,
         control.name,
@@ -235,11 +239,6 @@ function getFieldFromPageText(labels: string[]): string | null {
 }
 
 function getDescriptionText(): string | null {
-  const controlValue = getValueFromFormControls(["incident description", "description"]);
-  if (controlValue) {
-    return controlValue;
-  }
-
   for (const doc of getDocuments()) {
     for (const sel of SELECTORS.descriptionTextarea) {
       const el = doc.querySelector<HTMLTextAreaElement>(sel);
@@ -251,6 +250,11 @@ function getDescriptionText(): string | null {
     }
   }
 
+  const controlValue = getValueFromFormControls(["incident description", "description"]);
+  if (controlValue) {
+    return controlValue;
+  }
+
   return getDescriptionTextFromPageText();
 }
 
@@ -260,44 +264,44 @@ function hasAnyCaseDetails(data: CaseDetails): boolean {
 
 function getCallerNameFromDom(): string | null {
   return (
-    getValueFromFormControls(["caller id", "caller"]) ??
     queryInput(getDocuments(), SELECTORS.callerInput) ??
     queryByLabel(getDocuments(), ["Caller", "Name"]) ??
+    getValueFromFormControls(["caller id", "caller"]) ??
     getFieldFromPageText(["Caller", "Name"])
   );
 }
 
 function getShortDescriptionFromDom(): string | null {
   return (
-    getValueFromFormControls(["short description"]) ??
     queryInput(getDocuments(), SELECTORS.shortDescriptionInput) ??
     queryByLabel(getDocuments(), ["Short description"]) ??
+    getValueFromFormControls(["short description"]) ??
     getFieldFromPageText(["Short description"])
   );
 }
 
 function getEmailFromVisibleDom(): string | null {
   return (
-    getValueFromFormControls(["email", "caller email"]) ??
     queryInput(getDocuments(), SELECTORS.emailInput) ??
     queryByLabel(getDocuments(), ["Email"]) ??
+    getValueFromFormControls(["email", "caller email"]) ??
     getFieldFromPageText(["Email"])
   );
 }
 
 function getCallbackFromVisibleDom(): string | null {
   return (
-    getValueFromFormControls(["callback number", "callback", "business phone", "mobile phone", "phone"]) ??
     queryInput(getDocuments(), SELECTORS.callbackInput) ??
     queryByLabel(getDocuments(), ["Callback Number", "Business phone", "Mobile phone", "Phone"]) ??
+    getValueFromFormControls(["callback number", "callback", "business phone", "mobile phone", "phone"]) ??
     getFieldFromPageText(["Callback Number", "Business phone", "Mobile phone", "Phone"])
   );
 }
 
 function getAdxFromVisibleDom(): string | null {
   return (
-    getValueFromFormControls(["user id", "employee number", "workday id", "adx"]) ??
     queryByLabel(getDocuments(), ["User ID", "Employee number", "Workday ID"]) ??
+    getValueFromFormControls(["user id", "employee number", "workday id", "adx"]) ??
     getFieldFromPageText(["User ID", "Employee number", "Workday ID"])
   );
 }
