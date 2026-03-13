@@ -5,7 +5,7 @@
  * and return extracted values.  No DOM access — safe for unit testing.
  */
 
-import type { DeviceDetails } from "../../shared/schemas";
+import type { CaseDetails, DeviceDetails } from "../../shared/schemas";
 
 /**
  * Find a label that occupies an entire line, then return the next
@@ -30,11 +30,12 @@ export function findValueAfterLabel(pageText: string, ...labels: string[]): stri
 /**
  * Locate the pipe-delimited summary bar line.
  * e.g. "iPhone 16 | Phone #: N/A | Space: Default Space | Status: Active | ..."
+ * Also matches "Status: Retire Pending", "Status: Inactive", etc.
  */
 export function findSummaryLine(pageText: string): string | null {
   const lines = pageText.split("\n");
   for (const line of lines) {
-    if (/Status:\s*(Active|Inactive|Retired)/i.test(line) && line.includes("|")) {
+    if (/Status:\s*\S+/i.test(line) && line.includes("|") && /Phone\s*#/i.test(line)) {
       return line;
     }
   }
@@ -99,6 +100,60 @@ export function extractOwnershipType(pageText: string): string | null {
   return null;
 }
 
+// ── User info extraction ────────────────────────────────────────────
+// The device detail page shows user info near the top in this pattern:
+//   Marcus Falz
+//   |
+//   E40018502@adxuser.com
+//   |
+//   iPhone 16 | Phone #: ...
+
+/**
+ * Extract the user's name from the page header area.
+ * The name appears just before the first "|" separator and the email line.
+ */
+export function extractUserName(pageText: string): string | null {
+  const lines = pageText.split("\n").map((l) => l.trim());
+  // Find the email line, then the name is 2 lines before it (name / | / email)
+  for (let i = 2; i < lines.length; i++) {
+    if (/@\w+\.\w+/.test(lines[i]) && lines[i - 1] === "|") {
+      const name = lines[i - 2];
+      if (name && name !== "|" && name.length > 1 && !name.includes("@")) {
+        return name;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract email from the page header area.
+ * Appears as a line like "E40018502@adxuser.com" near the top.
+ */
+export function extractUserEmail(pageText: string): string | null {
+  const lines = pageText.split("\n").map((l) => l.trim());
+  for (const line of lines) {
+    // Match email-like pattern early in the page (before the detail table)
+    const m = line.match(/^([\w.+-]+@[\w.-]+\.\w{2,})$/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/**
+ * Extract ADX/employee ID from the email prefix.
+ * E.g. "E40018502@adxuser.com" → "E40018502"
+ * Matches patterns like E followed by digits.
+ */
+export function extractAdx(pageText: string): string | null {
+  const email = extractUserEmail(pageText);
+  if (email) {
+    const m = email.match(/^(E\d+)@/i);
+    if (m) return m[1].toUpperCase();
+  }
+  return null;
+}
+
 /**
  * Parse all device details from a MobileIron page's full inner text.
  */
@@ -109,5 +164,19 @@ export function parseDevicePage(pageText: string): DeviceDetails {
     serialNumber: extractSerialNumber(pageText),
     mdn: extractMdn(pageText),
     iosVersion: extractIosVersion(pageText),
+  };
+}
+
+/**
+ * Parse user info (name, email, ADX) from a MobileIron device page.
+ * Returns a partial CaseDetails with only the fields available.
+ */
+export function parseUserInfo(pageText: string): CaseDetails {
+  return {
+    name: extractUserName(pageText),
+    email: extractUserEmail(pageText),
+    callback: null,
+    adx: extractAdx(pageText),
+    issueMessage: null,
   };
 }

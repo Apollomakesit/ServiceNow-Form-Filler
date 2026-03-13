@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseDevicePage,
+  parseUserInfo,
   findValueAfterLabel,
   findSummaryLine,
   extractSerialNumber,
@@ -8,11 +9,13 @@ import {
   extractMdn,
   extractIosVersion,
   extractOwnershipType,
+  extractUserName,
+  extractUserEmail,
+  extractAdx,
 } from "../content/ivanti/parser";
 
-// Real innerText captured from a MobileIron device details page.
-// Sensitive values replaced with fictional data matching the format.
-const REAL_PAGE_TEXT = `Ivanti Neurons for MDM Apple iTunes Integration Upgrade Maintenance for NA
+// Real innerText captured from a MobileIron device details page (iPhone 16, Status: Active).
+const PAGE_IPHONE16 = `Ivanti Neurons for MDM Apple iTunes Integration Upgrade Maintenance for NA
 From Wed, 18 Mar 2026 07:30:00 AM to Wed, 18 Mar 2026 09:30:00 AM. Learn more
 Subscribe
 Users
@@ -75,209 +78,151 @@ OS/Version
 iOS 26.3.1
 OS Build Version
 23D8133
-Pending OS Version
+Ownership
+Company Owned`;
+
+// Real innerText from second device (iPhone 12, Status: Retire Pending).
+const PAGE_IPHONE12 = `Marcus Falz
+|
+E40018502@adxuser.com
+|
+iPhone 12 | Phone #: +16575358128 | Space: Default Space |  Status: Retire Pending | Cancel |  Last Check-in: 1 day 1 hour ago |  Client Last Check-in: 1 day 4 hours ago
+ 
+ 
+Overview
+Configurations
+Installed Apps
+Available Apps
+AppConnect Apps
+Policies
+Certificates
+Logs
+Legal Owner
 N/A
-Pending OS Build Version
-N/A
-Beta Enrollment
-N/A
-Supplemental Build Version
-23D8133
-Supplemental OS/Version Extra
-N/A
-Build ID
-N/A
-Apple Silicon Device
-No
-System Update
-N/A
-Android AOSP Enabled
-No
-Zebra Patch Version
-N/A
-Firmware Version
-N/A
-Device Source
-CLOUD
-Multi-User Mode
-No
-Time Zone
-America/Los_Angeles
-Last Known Device Unlock Passcode
-N/A
-Settings
-Device Name
-iPhone
-Device Identifier
-00008140-000864663678801C
-Device GUID
-478034d8-b56d-4add-9919-e045cd65a068
-Automated Device Enrollment Enabled
-Yes
-Automated Device Enrollment Enrolled
-Yes
-User Enrollment Enrolled
-No
-Registered Managed Apple ID
-N/A
- Paired Devices
-Language
-N/A
-MDM Device Identifier
-00008140-000864663678801C
-Device Client ID
-J403103NPY
-Enrollment Specific ID
-N/A
-Client App Version
-N/A
-Client App Bundle ID
-N/A
-Client Registered
-No
-EAS Device Identifiers
-1C59KOEE915ND5RS3HCF3P0Q70
-Activation Lock Bypass Code
-60QR3-FVF03-WH4J-6P77-LE0A-R5G4
+Device Location
+Disabled in RTX - Corporate Privacy
+Manufacturer
+Apple
+Model Number
+MGFL3LL/A
+Serial Number
+DX3HHL4N0DXP
+OS/Version
+iOS 26.3.1
 Ownership
 Company Owned
-Activation Lock Enabled
-No
-Apple Declarative Management Enabled
-Yes
-iTunes Account Active
-Yes
-Device Location Service Enabled
-No
-Quarantined
-No
-Sentry Blocked
-No
-Access Blocked
-No
-Compliance Action Blocked
-No
-APNS Capable
-Yes
-Last backup to iCloud
-iCloud backup disabled by administrator
- Supervised Mode
-Yes
-Passcode Lock Grace Period
-0
-Mobile Threat Defense
-MTD Activation Status
-N/A
-Anti Phishing native status
-N/A
-Anti Phishing VPN status
-N/A
-Windows Information Protection
-WIP
-OFF
-App Locker Configured
-No
-EDP Mandatory Settings
-Not Set
-Telephony
-Device Service Subscriptions
-IMSI
-N/A
-Home MCC
-311
-Home MNC
-480
-Current Country Name
-United States
-Home Country Name
-United States
-Cellular Technology
-GSM
-Roaming
-OFF
-Data Roaming
-Voice Roaming
-MEID
-N/A`;
+Phone Number
++16575358128`;
 
 describe("Ivanti MobileIron parser", () => {
   describe("findValueAfterLabel", () => {
     it("finds a value on the line after the label", () => {
-      expect(findValueAfterLabel(REAL_PAGE_TEXT, "Serial Number")).toBe("J403103NPY");
+      expect(findValueAfterLabel(PAGE_IPHONE16, "Serial Number")).toBe("J403103NPY");
     });
 
     it("returns null when value is N/A", () => {
-      expect(findValueAfterLabel(REAL_PAGE_TEXT, "Legal Owner")).toBeNull();
+      expect(findValueAfterLabel(PAGE_IPHONE16, "Legal Owner")).toBeNull();
     });
 
     it("returns null when label not found", () => {
-      expect(findValueAfterLabel(REAL_PAGE_TEXT, "Nonexistent Field")).toBeNull();
+      expect(findValueAfterLabel(PAGE_IPHONE16, "Nonexistent Field")).toBeNull();
     });
 
     it("matches case-insensitively", () => {
-      expect(findValueAfterLabel(REAL_PAGE_TEXT, "serial number")).toBe("J403103NPY");
+      expect(findValueAfterLabel(PAGE_IPHONE16, "serial number")).toBe("J403103NPY");
     });
   });
 
   describe("findSummaryLine", () => {
-    it("finds the pipe-delimited summary bar", () => {
-      const line = findSummaryLine(REAL_PAGE_TEXT);
+    it("finds summary bar with Status: Active", () => {
+      const line = findSummaryLine(PAGE_IPHONE16);
       expect(line).toContain("iPhone 16");
       expect(line).toContain("Status: Active");
+    });
+
+    it("finds summary bar with Status: Retire Pending", () => {
+      const line = findSummaryLine(PAGE_IPHONE12);
+      expect(line).toContain("iPhone 12");
+      expect(line).toContain("Retire Pending");
     });
   });
 
   describe("individual field extractors", () => {
     it("extracts serial number", () => {
-      expect(extractSerialNumber(REAL_PAGE_TEXT)).toBe("J403103NPY");
+      expect(extractSerialNumber(PAGE_IPHONE16)).toBe("J403103NPY");
     });
 
-    it("extracts device model from summary bar", () => {
-      expect(extractDeviceModel(REAL_PAGE_TEXT)).toBe("iPhone 16");
+    it("extracts device model from summary bar (Active)", () => {
+      expect(extractDeviceModel(PAGE_IPHONE16)).toBe("iPhone 16");
+    });
+
+    it("extracts device model from summary bar (Retire Pending)", () => {
+      expect(extractDeviceModel(PAGE_IPHONE12)).toBe("iPhone 12");
     });
 
     it("returns null for MDN when Phone # is N/A", () => {
-      expect(extractMdn(REAL_PAGE_TEXT)).toBeNull();
+      expect(extractMdn(PAGE_IPHONE16)).toBeNull();
     });
 
-    it("extracts MDN when a real phone number is present", () => {
-      const text = REAL_PAGE_TEXT.replace("Phone #: N/A", "Phone #: +12125551234");
-      expect(extractMdn(text)).toBe("+12125551234");
+    it("extracts MDN from summary bar", () => {
+      expect(extractMdn(PAGE_IPHONE12)).toBe("+16575358128");
     });
 
     it("extracts iOS version from OS/Version label", () => {
-      expect(extractIosVersion(REAL_PAGE_TEXT)).toBe("iOS 26.3.1");
+      expect(extractIosVersion(PAGE_IPHONE16)).toBe("iOS 26.3.1");
     });
 
     it("extracts Corp ownership from 'Company Owned'", () => {
-      expect(extractOwnershipType(REAL_PAGE_TEXT)).toBe("Corp");
+      expect(extractOwnershipType(PAGE_IPHONE16)).toBe("Corp");
     });
 
     it("extracts BYOD when ownership says BYOD", () => {
-      const text = REAL_PAGE_TEXT.replace("Company Owned", "BYOD");
+      const text = PAGE_IPHONE16.replace("Company Owned", "BYOD");
       expect(extractOwnershipType(text)).toBe("BYOD");
     });
   });
 
+  describe("user info extraction", () => {
+    it("extracts user name from page header", () => {
+      expect(extractUserName(PAGE_IPHONE16)).toBe("Marcus Falz");
+    });
+
+    it("extracts user email", () => {
+      expect(extractUserEmail(PAGE_IPHONE16)).toBe("E40018502@adxuser.com");
+    });
+
+    it("extracts ADX from email prefix", () => {
+      expect(extractAdx(PAGE_IPHONE16)).toBe("E40018502");
+    });
+
+    it("extracts user info from second device page too", () => {
+      expect(extractUserName(PAGE_IPHONE12)).toBe("Marcus Falz");
+      expect(extractUserEmail(PAGE_IPHONE12)).toBe("E40018502@adxuser.com");
+      expect(extractAdx(PAGE_IPHONE12)).toBe("E40018502");
+    });
+  });
+
   describe("parseDevicePage (full integration)", () => {
-    it("parses all available fields from a real page", () => {
-      const result = parseDevicePage(REAL_PAGE_TEXT);
+    it("parses all fields from iPhone 16 page", () => {
+      const result = parseDevicePage(PAGE_IPHONE16);
       expect(result.serialNumber).toBe("J403103NPY");
       expect(result.deviceModel).toBe("iPhone 16");
       expect(result.iosVersion).toBe("iOS 26.3.1");
       expect(result.ownershipType).toBe("Corp");
-      // MDN is N/A on this page
       expect(result.mdn).toBeNull();
     });
 
-    it("parses a page with a real phone number", () => {
-      const text = REAL_PAGE_TEXT.replace("Phone #: N/A", "Phone #: +18005551234");
-      const result = parseDevicePage(text);
-      expect(result.mdn).toBe("+18005551234");
+    it("parses all fields from iPhone 12 page (Retire Pending status)", () => {
+      const result = parseDevicePage(PAGE_IPHONE12);
+      expect(result.serialNumber).toBe("DX3HHL4N0DXP");
+      expect(result.deviceModel).toBe("iPhone 12");
+      expect(result.iosVersion).toBe("iOS 26.3.1");
+      expect(result.ownershipType).toBe("Corp");
+      expect(result.mdn).toBe("+16575358128");
     });
 
     it("handles iPad device model", () => {
-      const text = REAL_PAGE_TEXT.replace(
+      const text = PAGE_IPHONE16.replace(
         "iPhone 16 | Phone #: N/A",
         "iPad Pro 12.9 | Phone #: N/A",
       );
@@ -286,13 +231,23 @@ describe("Ivanti MobileIron parser", () => {
     });
 
     it("falls back to Model Number if no summary bar match", () => {
-      // Remove the summary bar line entirely
-      const text = REAL_PAGE_TEXT.replace(
+      const text = PAGE_IPHONE16.replace(
         /iPhone 16 \| Phone #:.*Client Last Check-in: N\/A/,
         "No summary here",
       );
       const result = parseDevicePage(text);
       expect(result.deviceModel).toBe("MYAP3LL/A");
+    });
+  });
+
+  describe("parseUserInfo", () => {
+    it("returns name, email, and ADX from device page", () => {
+      const result = parseUserInfo(PAGE_IPHONE16);
+      expect(result.name).toBe("Marcus Falz");
+      expect(result.email).toBe("E40018502@adxuser.com");
+      expect(result.adx).toBe("E40018502");
+      expect(result.callback).toBeNull();
+      expect(result.issueMessage).toBeNull();
     });
   });
 });

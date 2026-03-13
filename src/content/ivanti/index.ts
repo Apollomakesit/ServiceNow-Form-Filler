@@ -9,15 +9,20 @@
  * label/value pairs on consecutive lines.
  */
 
-import { DeviceDetailsSchema, type DeviceDetails } from "../../shared/schemas";
+import { DeviceDetailsSchema, CaseDetailsSchema, type DeviceDetails, type CaseDetails } from "../../shared/schemas";
 import type { ExtensionMessage } from "../../shared/messages";
-import { parseDevicePage } from "./parser";
+import { parseDevicePage, parseUserInfo } from "./parser";
 
 // ── Main extraction ─────────────────────────────────────────────────
 
 function extractDeviceDetails(): DeviceDetails {
   const pageText = document.body?.innerText ?? "";
   return parseDevicePage(pageText);
+}
+
+function extractUserDetails(): CaseDetails {
+  const pageText = document.body?.innerText ?? "";
+  return parseUserInfo(pageText);
 }
 
 // ── Capture + send ──────────────────────────────────────────────────
@@ -28,17 +33,32 @@ function captureDeviceDetails(): DeviceDetails | null {
   return result.success ? result.data : null;
 }
 
-function sendToBackground(data: DeviceDetails): void {
-  const msg: ExtensionMessage = { type: "DEVICE_CAPTURED", data };
-  chrome.runtime.sendMessage(msg);
+function captureUserDetails(): CaseDetails | null {
+  const raw = extractUserDetails();
+  const result = CaseDetailsSchema.safeParse(raw);
+  return result.success ? result.data : null;
+}
+
+function sendToBackground(deviceData: DeviceDetails, userData: CaseDetails | null): void {
+  const deviceMsg: ExtensionMessage = { type: "DEVICE_CAPTURED", data: deviceData };
+  chrome.runtime.sendMessage(deviceMsg);
+
+  if (userData && (userData.name || userData.email || userData.adx)) {
+    const caseMsg: ExtensionMessage = { type: "CASE_CAPTURED", data: userData };
+    chrome.runtime.sendMessage(caseMsg);
+  }
 }
 
 // ── Diagnostic string for the button tooltip ────────────────────────
 
-function diagString(data: DeviceDetails): string {
-  const entries = Object.entries(data);
-  const found = entries.filter(([, v]) => v !== null).map(([k, v]) => `${k}: ${v}`);
-  const missing = entries.filter(([, v]) => v === null).map(([k]) => k);
+function diagString(data: DeviceDetails, userData: CaseDetails | null): string {
+  const deviceEntries = Object.entries(data);
+  const userEntries: [string, string | null][] = userData
+    ? [["name", userData.name], ["email", userData.email], ["adx", userData.adx]]
+    : [];
+  const allEntries = [...userEntries, ...deviceEntries];
+  const found = allEntries.filter(([, v]) => v !== null).map(([k, v]) => `${k}: ${v}`);
+  const missing = allEntries.filter(([, v]) => v === null).map(([k]) => k);
   let msg = "";
   if (found.length) msg += "Found: " + found.join(", ");
   if (missing.length) msg += (msg ? "\n" : "") + "Missing: " + missing.join(", ");
@@ -72,19 +92,26 @@ function injectCaptureButton(): void {
 
   btn.addEventListener("click", () => {
     const data = captureDeviceDetails();
+    const userData = captureUserDetails();
     if (data) {
-      sendToBackground(data);
-      const found = Object.entries(data).filter(([, v]) => v !== null);
-      const missing = Object.entries(data).filter(([, v]) => v === null);
+      sendToBackground(data, userData);
+      const deviceEntries = Object.entries(data);
+      const userFields: [string, string | null][] = userData
+        ? [["name", userData.name], ["email", userData.email], ["adx", userData.adx]]
+        : [];
+      const allEntries = [...userFields, ...deviceEntries];
+      const found = allEntries.filter(([, v]) => v !== null);
+      const missing = allEntries.filter(([, v]) => v === null);
+      const total = allEntries.length;
 
       if (missing.length === 0) {
-        btn.textContent = "✅ Device Captured (5/5)";
+        btn.textContent = `✅ Captured (${found.length}/${total})`;
         btn.style.backgroundColor = "#107c10";
       } else {
-        btn.textContent = `⚠️ Captured (${found.length}/5 fields)`;
+        btn.textContent = `⚠️ Captured (${found.length}/${total} fields)`;
         btn.style.backgroundColor = "#ff8c00";
       }
-      btn.title = diagString(data);
+      btn.title = diagString(data, userData);
       setTimeout(() => {
         btn.textContent = "📱 Capture Device Details";
         btn.style.backgroundColor = "#0078d4";
