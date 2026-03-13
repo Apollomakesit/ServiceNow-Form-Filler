@@ -129,7 +129,9 @@ function getElementValueById(doc: Document, id: string): string | null {
   }
 
   if (element instanceof HTMLSelectElement) {
-    return element.selectedOptions[0]?.textContent?.trim() ?? element.value.trim() || null;
+    const selectedText = element.selectedOptions[0]?.textContent?.trim();
+    const rawValue = element.value.trim();
+    return selectedText || rawValue || null;
   }
 
   if ("value" in element && typeof element.value === "string") {
