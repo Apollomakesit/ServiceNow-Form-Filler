@@ -429,9 +429,18 @@ function sendToBackground(data: CaseDetails): void {
   chrome.runtime.sendMessage(msg);
 }
 
+function isIncidentFormDocument(root: ParentNode = document): boolean {
+  return Boolean(
+    root.querySelector(
+      "#incident\\.description, #incident\\.short_description, #sys_display\\.incident\\.caller_id, #incident\\.u_callback_number"
+    )
+  );
+}
+
 // ── Inject a small capture button on the page ───────────────────────
 
 function injectCaptureButton(): void {
+  if (!isIncidentFormDocument()) return;
   if (document.getElementById("snff-capture-btn")) return;
 
   const btn = document.createElement("button");
@@ -479,4 +488,38 @@ function injectCaptureButton(): void {
 
 // ── Init ────────────────────────────────────────────────────────────
 
-injectCaptureButton();
+function init(): void {
+  function tryInject(): void {
+    if (!document.body) {
+      window.setTimeout(tryInject, 200);
+      return;
+    }
+
+    injectCaptureButton();
+  }
+
+  const observer = new MutationObserver(() => {
+    if (!document.getElementById("snff-capture-btn")) {
+      injectCaptureButton();
+    }
+  });
+
+  tryInject();
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  } else {
+    window.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        if (document.body) {
+          observer.observe(document.body, { childList: true, subtree: true });
+          injectCaptureButton();
+        }
+      },
+      { once: true }
+    );
+  }
+}
+
+init();

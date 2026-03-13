@@ -16,6 +16,7 @@
     {
       "matches": ["https://rtxprod.servicenowservices.com/*"],
       "js": ["src/content/servicenow/index.ts"],
+      "all_frames": true,
       "run_at": "document_idle"
     },
     {
